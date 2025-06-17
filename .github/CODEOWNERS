@@ -1,0 +1,6 @@
+# CODEOWNERS
+# Define code owners for security-sensitive paths
+/security/ @security-team
+/kubernetes/ @devops-team
+/terraform/ @devops-team
+/app/ @app-team

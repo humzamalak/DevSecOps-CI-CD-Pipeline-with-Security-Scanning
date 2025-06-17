@@ -1,0 +1,39 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8spsphostpathhostnetwork
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sPSPHostPathHostNetwork
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8spsphostpathhostnetwork
+        violation[{
+          "msg": msg
+        }] {
+          input.review.kind.kind == "Pod"
+          c := input.review.object.spec.containers[_]
+          input.review.object.spec.hostNetwork == true
+          msg := sprintf("Pod %v must not use hostNetwork", [input.review.object.metadata.name])
+        }
+        violation[{
+          "msg": msg
+        }] {
+          input.review.kind.kind == "Pod"
+          c := input.review.object.spec.containers[_]
+          c.volumeMounts[_].name == vname
+          v := input.review.object.spec.volumes[_]
+          v.name == vname
+          v.hostPath.path != ""
+          msg := sprintf("Pod %v must not use hostPath volumes", [input.review.object.metadata.name])
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPSPHostPathHostNetwork
+metadata:
+  name: restrict-hostpath-hostnetwork
+spec:
+  enforcementAction: dryrun

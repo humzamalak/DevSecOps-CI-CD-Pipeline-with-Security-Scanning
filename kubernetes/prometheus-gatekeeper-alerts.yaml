@@ -1,0 +1,11 @@
+groups:
+- name: gatekeeper-policy-violations
+  rules:
+  - alert: GatekeeperConstraintViolation
+    expr: increase(gatekeeper_constraint_violations_total[5m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Gatekeeper policy violation detected"
+      description: "One or more resources are violating OPA/Gatekeeper policies."

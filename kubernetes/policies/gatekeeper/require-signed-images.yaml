@@ -1,0 +1,44 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredsignatures
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredSignatures
+      validation:
+        openAPIV3Schema:
+          properties:
+            images:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredsignatures
+        violation[{
+          "msg": msg,
+          "details": {"missing_signatures": missing}
+        }] {
+          input.review.kind.kind == "Pod"
+          missing := [img | img := input.review.object.spec.containers[_].image; not is_signed(img)]
+          count(missing) > 0
+          msg := sprintf("Pod uses unsigned images: %v", [missing])
+        }
+        is_signed(img) = true {
+          endswith(img, "@sha256:signed")
+        }
+        is_signed(img) = false {
+          not endswith(img, "@sha256:signed")
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSignatures
+metadata:
+  name: require-signed-images
+spec:
+  enforcementAction: dryrun
+  parameters:
+    images: []

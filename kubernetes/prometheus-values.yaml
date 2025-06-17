@@ -1,0 +1,13 @@
+# Minimal Prometheus Helm values for scraping FastAPI app
+server:
+  global:
+    scrape_interval: 15s
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
+  extraScrapeConfigs:
+    - job_name: 'devsecops-app'
+      metrics_path: /metrics
+      static_configs:
+        - targets: ['devsecops-app:8000']

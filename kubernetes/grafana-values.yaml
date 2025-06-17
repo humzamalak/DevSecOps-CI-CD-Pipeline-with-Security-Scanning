@@ -1,0 +1,5 @@
+# Minimal Grafana Helm values
+adminPassword: "admin"
+service:
+  type: ClusterIP
+  port: 80

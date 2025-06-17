@@ -1,0 +1,43 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Policy Violations",
+      "targets": [
+        {
+          "expr": "sum(gatekeeper_constraint_violations_total)",
+          "format": "time_series"
+        }
+      ],
+      "id": 1
+    },
+    {
+      "type": "graph",
+      "title": "Violations Over Time",
+      "targets": [
+        {
+          "expr": "increase(gatekeeper_constraint_violations_total[1h])",
+          "format": "time_series"
+        }
+      ],
+      "id": 2
+    },
+    {
+      "type": "table",
+      "title": "Violations by Constraint",
+      "targets": [
+        {
+          "expr": "sum by (constraint_kind) (gatekeeper_constraint_violations_total)",
+          "format": "table"
+        }
+      ],
+      "id": 3
+    }
+  ],
+  "title": "Gatekeeper Policy Compliance",
+  "schemaVersion": 30,
+  "version": 1
+}
