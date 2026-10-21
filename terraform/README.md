@@ -5,7 +5,7 @@ This directory provisions AWS EKS infrastructure using Terraform.
 ## Files
 - `main.tf`: Core resources (VPC, EKS cluster, node groups)
 - `variables.tf`: Input variables for customization
-- `outputs.tf`: Useful outputs (cluster name, kubeconfig, VPC ID)
+- `outputs.tf`: Useful outputs (cluster name, cluster endpoint, VPC ID)
 
 ## Usage
 

@@ -3,9 +3,9 @@ output "cluster_name" {
   value       = module.eks.cluster_name
 }
 
-output "kubeconfig" {
-  description = "Kubeconfig file content"
-  value       = module.eks.kubeconfig
+output "cluster_endpoint" {
+  description = "EKS cluster API endpoint (use `aws eks update-kubeconfig` to build a kubeconfig)"
+  value       = module.eks.cluster_endpoint
 }
 
 output "vpc_id" {
