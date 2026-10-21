@@ -6,7 +6,7 @@ This directory contains Kubernetes manifests for deploying the DevSecOps sample 
 - `deployment.yaml`: Secure deployment for the FastAPI app, referencing signed images from ECR.
 - `service.yaml`: ClusterIP service exposing the app on port 80.
 - `ingress.yaml`: Ingress resource for external access (update host as needed).
-- `image-policy.yaml`: OPA Gatekeeper policy enforcing signed images.
+- `image-policy.yaml`: OPA Gatekeeper constraint enforcing signed images (needs the `K8sRequiredSignatures` ConstraintTemplate from `policies/gatekeeper/require-signed-images.yaml`).
 
 ## Security Best Practices
 - Uses non-root user, disables privilege escalation, and enforces read-only root filesystem.

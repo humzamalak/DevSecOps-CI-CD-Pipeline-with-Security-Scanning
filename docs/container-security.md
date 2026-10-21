@@ -100,7 +100,7 @@ cosign verify-attestation \
 ```yaml
 # OPA Gatekeeper policy
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: RequireSignedImages
+kind: K8sRequiredSignatures
 metadata:
   name: must-be-signed
 spec:
