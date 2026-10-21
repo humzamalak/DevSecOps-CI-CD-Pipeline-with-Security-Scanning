@@ -33,5 +33,13 @@ spec:
           env:
             - name: ENV
               value: "production"
+            - name: LOG_FILE
+              value: "/tmp/app.log"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
       imagePullSecrets:
         - name: regcred # If using private ECR
