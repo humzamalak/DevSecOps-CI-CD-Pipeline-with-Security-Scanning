@@ -1,6 +1,6 @@
 # DevSecOps CI/CD Pipeline
 
-![CI](https://github.com/${{github.repository}}/actions/workflows/build.yml/badge.svg?branch=main)
+![CI](https://github.com/humzamalak/DevSecOps-CI-CD-Pipeline-with-Security-Scanning/actions/workflows/build.yml/badge.svg?branch=main)
 
 This repository implements a secure, production-grade CI/CD pipeline with integrated security scanning, containerization, and Kubernetes orchestration.
 
