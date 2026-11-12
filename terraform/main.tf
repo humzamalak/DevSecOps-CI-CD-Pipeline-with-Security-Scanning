@@ -16,6 +16,7 @@ provider "aws" {
 }
 
 module "vpc" {
+  # checkov:skip=CKV_TF_1:Registry module pinned to an exact version; registry sources cannot be pinned to a commit hash
   source             = "terraform-aws-modules/vpc/aws"
   version            = "5.1.0"
   name               = "devsecops-vpc"
@@ -28,6 +29,7 @@ module "vpc" {
 }
 
 module "eks" {
+  # checkov:skip=CKV_TF_1:Registry module pinned to an exact version; registry sources cannot be pinned to a commit hash
   source          = "terraform-aws-modules/eks/aws"
   version         = "20.8.4"
   cluster_name    = var.cluster_name

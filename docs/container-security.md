@@ -32,8 +32,8 @@ These steps run only when the repository variable `AWS_DEPLOY_ENABLED` is
 From `app/Dockerfile` and `kubernetes/deployment.yaml`:
 
 - Multi-stage build on `python:3.11-slim`.
-- Runs as UID 65534 (`nobody`), with `runAsNonRoot: true`.
-- `allowPrivilegeEscalation: false` and `readOnlyRootFilesystem: true`; logs
+- Runs as UID 10001, with `runAsNonRoot: true` and the RuntimeDefault seccomp profile.
+- All Linux capabilities dropped, `allowPrivilegeEscalation: false` and `readOnlyRootFilesystem: true`; logs
   go to an `emptyDir` volume on `/tmp`.
 - CPU and memory requests and limits are set.
 

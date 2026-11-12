@@ -10,8 +10,10 @@ and `.github/workflows/security.yml` (daily).
 - **Semgrep (SAST):** scans `app/` with the `auto` rule set. Any finding fails
   the build. Results are uploaded to the Security tab ("Code scanning alerts").
 - **Gitleaks (secrets):** scans the full Git history. Any finding fails the build.
-- **Checkov (IaC):** scans `terraform/` and `kubernetes/`. Runs in soft-fail
-  mode: findings show in the job log but do not fail the build.
+- **Checkov (IaC):** scans `terraform/` and `kubernetes/`. Any failed check
+  fails the build. Accepted exceptions are skipped in the file itself with a
+  written reason: `CKV_TF_1` on the two registry modules (pinned to an exact
+  version) and `CKV_K8S_43` on the Deployment (commit-SHA tag set at deploy).
 - **Trivy (container):** the Dockerfile configuration scan fails the build on
   HIGH or CRITICAL findings. The image vulnerability scan reports HIGH and
   CRITICAL issues with a fix available, but does not fail the build.

@@ -65,17 +65,20 @@ jobs:
       - name: Deploy application manifests
         run: |
           # Replace the image placeholder with the image CI pushed for this commit
-          sed "s#<ECR_REGISTRY>/devsecops-app:latest#${{ steps.login-ecr.outputs.registry }}/devsecops-app:${IMAGE_TAG}#" \
+          kubectl apply -f kubernetes/namespace.yaml
+          kubectl apply -f kubernetes/serviceaccount.yaml
+          kubectl apply -f kubernetes/networkpolicy.yaml
+          sed -e "s#<ECR_REGISTRY>#${{ steps.login-ecr.outputs.registry }}#" -e "s#<IMAGE_TAG>#${IMAGE_TAG}#" \
             kubernetes/deployment.yaml | kubectl apply -f -
           kubectl apply -f kubernetes/service.yaml
           kubectl apply -f kubernetes/ingress.yaml
 
       - name: Wait for rollout
-        run: kubectl rollout status deployment/devsecops-app --timeout=120s
+        run: kubectl -n devsecops rollout status deployment/devsecops-app --timeout=120s
 
       - name: Health check
         run: |
           sleep 10
-          kubectl get pods -l app=devsecops-app
+          kubectl -n devsecops get pods -l app=devsecops-app
           # Replace with your ingress/service endpoint as needed
           curl --fail --max-time 10 http://devsecops-app.local/health || echo "Health check failed! Manual rollback may be required." 

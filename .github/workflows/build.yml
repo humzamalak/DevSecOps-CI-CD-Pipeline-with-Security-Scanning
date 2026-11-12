@@ -88,12 +88,13 @@ jobs:
           python-version: '3.11'
       - name: Install Checkov
         run: pip install checkov==3.4.4
-      # Soft fail: findings are reported in the log but do not fail the build
+      # Any failed check fails the build. Accepted exceptions are skipped in the
+      # files themselves with a written reason (checkov:skip / checkov.io/skip).
       - name: Checkov on Terraform
-        run: checkov -d terraform/ --soft-fail --compact --framework terraform
+        run: checkov -d terraform/ --compact --framework terraform
       - name: Checkov on Kubernetes manifests
         # The gator test samples are deliberately insecure, so they are skipped
-        run: checkov -d kubernetes/ --soft-fail --compact --framework kubernetes --skip-path kubernetes/policies/gatekeeper/tests
+        run: checkov -d kubernetes/ --compact --framework kubernetes --skip-path kubernetes/policies/gatekeeper/tests
 
   policy:
     name: Policy tests (OPA Gatekeeper)

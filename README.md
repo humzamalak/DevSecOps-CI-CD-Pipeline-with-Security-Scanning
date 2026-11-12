@@ -52,14 +52,15 @@ flowchart LR
 | --- | --- | --- | --- |
 | Static analysis of application code | Semgrep | `sast` job, daily scan | Any finding fails the build |
 | Secrets in Git history | Gitleaks | `secrets` job | Any finding fails the build |
-| Terraform and Kubernetes misconfiguration | Checkov | `iac` job | Reports only (soft fail) |
+| Terraform and Kubernetes misconfiguration | Checkov | `iac` job | Any failed check fails the build; the 3 accepted exceptions are skipped in the files with a written reason |
 | Dockerfile misconfiguration | Trivy (config) | `image` job | HIGH or CRITICAL fails the build |
 | Image vulnerabilities | Trivy (image) | `image` job, daily scan | Reports HIGH and CRITICAL with a fix; does not fail the build |
 | Software bill of materials | Syft (CycloneDX) | `image` job | Stored as a build artefact; attached to the image as a Cosign attestation when pushed |
 | Image signing | Cosign (keyless, GitHub OIDC) | `image` job, `main` only | Signs the pushed image digest |
 | Build provenance | `actions/attest-build-provenance` | `image` job, `main` only | Provenance attestation pushed to the registry |
 | Kubernetes admission policy | OPA Gatekeeper | `policy` job (tests), deploy (apply) | Policy tests fail the build; in the cluster all constraints are in `dryrun` (audit) mode |
-| Container hardening | Kubernetes `securityContext` | `kubernetes/deployment.yaml` | Non-root user, no privilege escalation, read-only root filesystem, CPU and memory limits |
+| Container hardening | Kubernetes `securityContext` | `kubernetes/deployment.yaml` | UID 10001, no privilege escalation, all capabilities dropped, RuntimeDefault seccomp, read-only root filesystem, probes, CPU and memory limits |
+| Workload isolation | Namespace, ServiceAccount, NetworkPolicy | `kubernetes/` | Own `devsecops` namespace, dedicated ServiceAccount with no token mounted, ingress only on port 8000 from the ingress controller and monitoring |
 
 Limits that apply today:
 
@@ -68,6 +69,8 @@ Limits that apply today:
   verification at admission needs a verifier such as Sigstore policy-controller.
 - The Gatekeeper constraints run in audit mode. They report violations but do
   not block Pods.
+- Checkov scans this repository's Terraform only. It does not download and
+  scan the community VPC and EKS modules.
 
 ## Repository layout
 

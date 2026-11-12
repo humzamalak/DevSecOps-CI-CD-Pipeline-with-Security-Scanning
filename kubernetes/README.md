@@ -3,6 +3,9 @@
 This directory contains Kubernetes manifests for deploying the DevSecOps sample application.
 
 ## Files
+- `namespace.yaml`: `devsecops` namespace with the labels the Gatekeeper namespace policy requires.
+- `serviceaccount.yaml`: dedicated ServiceAccount with no API token mounted.
+- `networkpolicy.yaml`: allows ingress to the app only on port 8000 from `ingress-nginx` and `monitoring`.
 - `deployment.yaml`: Secure deployment for the FastAPI app, referencing signed images from ECR.
 - `service.yaml`: ClusterIP service exposing the app on port 80.
 - `ingress.yaml`: Ingress resource for external access (update host as needed).
