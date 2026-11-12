@@ -1,320 +1,79 @@
-# Container Security and Supply Chain Attestation
+# Container Security and Supply Chain
 
-This document outlines our advanced container security implementation using Cosign for image signing, SLSA provenance generation, and supply chain attestation.
+This document describes what the pipeline does to secure the container image,
+and what it does not do yet. The steps are in `.github/workflows/build.yml`.
 
-## 🔐 Security Features
+## What runs on every build
 
-### Image Signing with Cosign
-- **Keyless Signing**: Uses GitHub OIDC for secure, keyless image signing
-- **Sigstore Integration**: Leverages Sigstore's transparency log (Rekor) for public verification
-- **Multi-Architecture**: Signs both AMD64 and ARM64 images
-- **Automatic Verification**: Images are verified before deployment
+| Step | Tool | Result |
+| --- | --- | --- |
+| Dockerfile configuration scan | Trivy (`config`) | HIGH or CRITICAL findings fail the build |
+| Image build | Docker Buildx | Single-arch image, loaded locally for the next steps |
+| Image vulnerability scan | Trivy (`image`) | Reports HIGH and CRITICAL issues that have a fix; does not fail the build |
+| SBOM | Syft (CycloneDX JSON) | `sbom.cdx.json`, stored as a build artefact |
 
-### SLSA Provenance
-- **Build Attestation**: Every image includes cryptographic proof of build process
-- **Supply Chain Transparency**: Full traceability from source code to deployed image
-- **GitHub Native**: Uses GitHub's built-in attestation service
-- **Tamper Detection**: Any modification to the image invalidates the provenance
+## What runs on `main` when AWS is enabled
 
-### Supply Chain Security
-- **Software Bill of Materials (SBOM)**: Complete inventory of all components
-- **Vulnerability Scanning**: Trivy scans for known vulnerabilities
-- **Policy Enforcement**: OPA Gatekeeper policies require signed images
-- **Continuous Verification**: Daily verification of all deployed images
+These steps run only when the repository variable `AWS_DEPLOY_ENABLED` is
+`true` (see the README).
 
-## 🏗️ Implementation Architecture
+1. Push a `linux/amd64` and `linux/arm64` image to Amazon ECR, tagged `latest`
+   and with the commit SHA.
+2. Sign the image digest with Cosign keyless signing. The GitHub OIDC token
+   proves the workflow identity, Fulcio issues a short-lived certificate, and
+   the signature is recorded in the Rekor transparency log.
+3. Attach the SBOM to the image as a Cosign attestation (`--type cyclonedx`).
+   The SBOM describes the `linux/amd64` image that was built and scanned.
+4. Create a build provenance attestation with
+   `actions/attest-build-provenance` and push it to the registry.
 
-```mermaid
-graph TB
-    A[Source Code] --> B[GitHub Actions]
-    B --> C[Build & Test]
-    C --> D[Docker Build]
-    D --> E[Cosign Sign]
-    E --> F[SLSA Attest]
-    F --> G[Registry Push]
-    G --> H[Signature Verify]
-    H --> I[Deploy to K8s]
-    I --> J[Runtime Verification]
-    
-    K[Rekor Transparency Log] --> E
-    L[Fulcio CA] --> E
-    M[GitHub OIDC] --> E
-    
-    N[OPA Gatekeeper] --> I
-    O[Daily Verification] --> J
-```
+## Image hardening
 
-## 🔑 Signing Process
+From `app/Dockerfile` and `kubernetes/deployment.yaml`:
 
-### 1. Build-Time Signing
-```yaml
-# In GitHub Actions
-- name: Sign container image
-  run: |
-    cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.image.outputs.digest }}
-```
+- Multi-stage build on `python:3.11-slim`.
+- Runs as UID 65534 (`nobody`), with `runAsNonRoot: true`.
+- `allowPrivilegeEscalation: false` and `readOnlyRootFilesystem: true`; logs
+  go to an `emptyDir` volume on `/tmp`.
+- CPU and memory requests and limits are set.
 
-The signing process:
-1. **Identity Verification**: GitHub OIDC token proves workflow identity
-2. **Certificate Generation**: Fulcio CA issues short-lived certificate
-3. **Signature Creation**: Image digest is signed with ephemeral key
-4. **Transparency Log**: Signature is recorded in Rekor for public verification
-5. **Registry Storage**: Signature is stored alongside the image
+## Verify an image by hand
 
-### 2. SLSA Provenance Generation
-```yaml
-- name: Generate SLSA provenance
-  uses: actions/attest-build-provenance@v1
-  with:
-    subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-    subject-digest: ${{ steps.image.outputs.digest }}
-    push-to-registry: true
-```
+Replace the registry, account and digest with your own values.
 
-Provenance includes:
-- **Builder Identity**: GitHub Actions workflow
-- **Source Repository**: Exact commit and branch
-- **Build Parameters**: Environment variables and inputs
-- **Dependencies**: All build-time dependencies
-- **Timestamp**: When the build occurred
-
-## 🛡️ Verification Process
-
-### Pre-Deployment Verification
 ```bash
-# Verify signature
+# Signature
 cosign verify \
-  --certificate-identity-regexp="https://github.com/your-org/your-repo" \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  your-registry/your-image@sha256:digest
+  --certificate-identity-regexp "https://github.com/humzamalak/DevSecOps-CI-CD-Pipeline-with-Security-Scanning" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  <account>.dkr.ecr.us-east-1.amazonaws.com/devsecops-app@sha256:<digest>
 
-# Verify SLSA provenance
-cosign verify-attestation \
-  --type slsaprovenance \
-  --certificate-identity-regexp="https://github.com/your-org/your-repo" \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  your-registry/your-image@sha256:digest
+# SBOM attestation
+cosign verify-attestation --type cyclonedx \
+  --certificate-identity-regexp "https://github.com/humzamalak/DevSecOps-CI-CD-Pipeline-with-Security-Scanning" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  <account>.dkr.ecr.us-east-1.amazonaws.com/devsecops-app@sha256:<digest>
+
+# Build provenance
+gh attestation verify \
+  oci://<account>.dkr.ecr.us-east-1.amazonaws.com/devsecops-app@sha256:<digest> \
+  --repo humzamalak/DevSecOps-CI-CD-Pipeline-with-Security-Scanning
 ```
 
-### Runtime Policy Enforcement
-```yaml
-# OPA Gatekeeper policy
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sRequiredSignatures
-metadata:
-  name: must-be-signed
-spec:
-  match:
-    kinds:
-      - apiGroups: ["apps"]
-        kinds: ["Deployment", "DaemonSet", "StatefulSet"]
-```
+## Not implemented yet
 
-## 📊 Security Attestations
+- **Signature verification at admission.** The Gatekeeper template
+  `kubernetes/policies/gatekeeper/templates/require-signed-images.yaml` is a
+  placeholder: it matches a fixed digest suffix and does not check Cosign
+  signatures. A cluster can therefore run an unsigned image. To close this gap,
+  add Sigstore policy-controller or Kyverno `verifyImages`.
+- **Blocking on image vulnerabilities.** The Trivy image scan reports only.
+- **Enforcing Gatekeeper policies.** All constraints use
+  `enforcementAction: dryrun`, so they audit and do not block.
 
-### What Gets Attested
-1. **Build Provenance** (SLSA Level 3)
-   - Source repository and commit
-   - Build environment and parameters
-   - Dependencies and their versions
-   - Build timestamp and duration
+## References
 
-2. **Software Bill of Materials (SBOM)**
-   - All installed packages and versions
-   - License information
-   - Vulnerability status
-   - Package sources and hashes
-
-3. **Container Metadata**
-   - Base image information
-   - Layer composition
-   - Security scan results
-   - Configuration parameters
-
-### Attestation Storage
-- **Registry Integration**: Attestations stored in OCI registry
-- **Sigstore Transparency**: Public log in Rekor
-- **GitHub Attestations**: Native GitHub attestation service
-- **Policy Integration**: Available to admission controllers
-
-## 🔍 Verification Commands
-
-### Manual Verification
-```bash
-# Download and inspect signature
-cosign tree your-registry/your-image:tag
-
-# Download SLSA provenance
-cosign download attestation your-registry/your-image@sha256:digest \
-  --predicate-type=https://slsa.dev/provenance/v0.2
-
-# Download SBOM
-cosign download sbom your-registry/your-image@sha256:digest
-
-# Verify with custom policy
-cosign verify your-registry/your-image@sha256:digest \
-  --certificate-identity=your-expected-identity \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-```
-
-### Automated Verification
-```bash
-# Kubernetes admission controller
-kubectl apply -f kubernetes/image-policy.yaml
-
-# CI/CD pipeline verification
-cosign verify-blob --bundle cosign.bundle --signature signature.sig file.txt
-```
-
-## 🚨 Security Policies
-
-### Image Acceptance Criteria
-✅ **Required for Deployment:**
-- Image must be signed with valid Cosign signature
-- SLSA provenance must be present and valid
-- Signature must match expected GitHub repository
-- No critical vulnerabilities in Trivy scan
-- SBOM must be complete and accurate
-
-❌ **Deployment Blocked If:**
-- Image signature is missing or invalid
-- Provenance cannot be verified
-- Signature identity doesn't match expected source
-- Critical vulnerabilities detected
-- SBOM is incomplete or missing
-
-### Exemption Process
-For emergency deployments or specific use cases:
-
-1. **Create Security Exception**
-   ```yaml
-   # security-exception.yaml
-   apiVersion: v1
-   kind: ConfigMap
-   metadata:
-     name: security-exception
-     annotations:
-       security.exception/reason: "Emergency hotfix deployment"
-       security.exception/approver: "security-team@company.com"
-       security.exception/expires: "2024-01-15T00:00:00Z"
-   ```
-
-2. **Document Justification**
-   - Business impact assessment
-   - Risk analysis and mitigation
-   - Temporary nature confirmation
-   - Follow-up remediation plan
-
-## 📈 Monitoring and Alerting
-
-### Security Metrics
-- **Signature Coverage**: Percentage of deployed images that are signed
-- **Verification Success Rate**: Successful verifications vs. total attempts
-- **Policy Violations**: Number of deployment attempts blocked
-- **Certificate Expiry**: Monitoring for expiring certificates
-- **Supply Chain Drift**: Changes in dependencies or build process
-
-### Alerting Rules
-```yaml
-# Example Prometheus alerting rules
-groups:
-- name: container-security
-  rules:
-  - alert: UnsignedImageDeployed
-    expr: unsigned_images_deployed > 0
-    for: 0m
-    annotations:
-      summary: "Unsigned container image deployed"
-      
-  - alert: SignatureVerificationFailed
-    expr: signature_verification_failures > 5
-    for: 5m
-    annotations:
-      summary: "High number of signature verification failures"
-```
-
-### Dashboard Metrics
-- Real-time signature verification status
-- SLSA provenance coverage percentage
-- Supply chain security posture score
-- Vulnerability trends over time
-- Policy compliance statistics
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-#### Signature Verification Fails
-```bash
-# Check signature exists
-cosign verify your-registry/your-image@sha256:digest
-
-# Common causes:
-# 1. Image not signed
-# 2. Wrong certificate identity
-# 3. Expired certificate
-# 4. Network issues with Rekor/Fulcio
-```
-
-#### SLSA Provenance Missing
-```bash
-# Check attestations
-cosign tree your-registry/your-image:tag
-
-# Possible issues:
-# 1. Attestation step failed in CI/CD
-# 2. Registry doesn't support attestations
-# 3. Permissions issue
-```
-
-#### Policy Violations
-```bash
-# Check Gatekeeper constraints
-kubectl get constraints
-
-# Debug specific violation
-kubectl describe constraint require-signed-images
-```
-
-### Recovery Procedures
-
-#### Emergency Deployment
-1. Create security exception (see above)
-2. Apply exception to cluster
-3. Deploy unsigned image temporarily
-4. Create ticket for proper signing
-5. Replace with signed image ASAP
-
-#### Certificate Issues
-1. Check Fulcio CA status
-2. Verify GitHub OIDC configuration
-3. Re-run signing workflow
-4. Update certificate trust roots if needed
-
-## 📚 References
-
-- [Cosign Documentation](https://docs.sigstore.dev/cosign/overview/)
-- [SLSA Framework](https://slsa.dev/)
-- [Sigstore Architecture](https://docs.sigstore.dev/system_config/architecture/)
+- [Cosign](https://docs.sigstore.dev/cosign/overview/)
+- [SLSA](https://slsa.dev/)
+- [GitHub artifact attestations](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds)
 - [OPA Gatekeeper](https://open-policy-agent.github.io/gatekeeper/)
-- [GitHub Attestations](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds)
-
-## 🔄 Maintenance
-
-### Regular Tasks
-- **Weekly**: Review security dashboard and metrics
-- **Monthly**: Update Cosign and related tools
-- **Quarterly**: Review and update security policies
-- **Annually**: Security architecture review and threat modeling
-
-### Version Updates
-```bash
-# Update Cosign version in workflow
-cosign-release: 'v2.2.0'  # Update to latest stable
-
-# Update policy templates
-kubectl apply -f kubernetes/image-policy.yaml
-
-# Test verification with new versions
-cosign verify --help  # Check for new features
-``` 
