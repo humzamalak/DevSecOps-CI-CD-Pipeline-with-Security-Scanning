@@ -5,161 +5,211 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+# Third-party actions are pinned to full commit SHAs (tag in the comment).
+# Mutable tags were rewritten in the March 2026 trivy-action compromise
+# (CVE-2026-33634), so a tag alone is not a stable reference.
+
+permissions:
+  contents: read
+
+env:
+  # Push, sign and attest only on main, and only when the repository variable
+  # AWS_DEPLOY_ENABLED is "true" and the AWS secrets exist. Without it the
+  # pipeline still lints, tests, scans and builds the image locally.
+  PUBLISH: ${{ github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ENABLED == 'true' }}
 
 jobs:
-  build-test:
+  lint-test:
+    name: Lint and unit tests
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write # Cosign keyless signing and SLSA provenance (OIDC)
-      attestations: write # actions/attest-build-provenance
-      security-events: write # Upload Semgrep SARIF to code scanning
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.11'
-
-      # Cache Python dependencies
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
+          cache: pip
+          cache-dependency-path: app/requirements.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r app/requirements.txt
-          pip install flake8 pytest
-
-      # Linting and formatting checks
+          pip install -r app/requirements.txt flake8 pytest
       - name: Lint (flake8)
         run: flake8 app/
       - name: Check formatting (black)
         run: black --check app/
       - name: Check imports (isort)
         run: isort --check-only app/
-
-      # Run tests with coverage
-      - name: Run unit tests with coverage
+      - name: Unit tests with coverage (minimum 80%)
         run: pytest --cov=app --cov-fail-under=80 app/tests/
 
-      # Cache Docker layers
-      - name: Set up QEMU (for multi-arch builds)
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Cache Docker layers
-        uses: actions/cache@v4
+  sast:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # Upload SARIF to code scanning
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
+          python-version: '3.11'
+      - name: Install Semgrep
+        run: pip install semgrep==1.185.0
+      - name: Run Semgrep (fails on any finding)
+        run: semgrep scan --config=auto --error --sarif --output=semgrep.sarif app/
+      - name: Upload Semgrep SARIF
+        # Dependabot and fork PRs get a read-only token and cannot upload
+        if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
 
-      # Only build and push multi-arch image on main branch
+  secrets:
+    name: Secret scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0 # Scan the full history, not only the last commit
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  iac:
+    name: IaC scan (Checkov)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.11'
+      - name: Install Checkov
+        run: pip install checkov==3.4.4
+      # Soft fail: findings are reported in the log but do not fail the build
+      - name: Checkov on Terraform
+        run: checkov -d terraform/ --soft-fail --compact --framework terraform
+      - name: Checkov on Kubernetes manifests
+        run: checkov -d kubernetes/ --soft-fail --compact --framework kubernetes
+
+  policy:
+    name: Policy tests (OPA Gatekeeper)
+    runs-on: ubuntu-latest
+    env:
+      GATOR_VERSION: v3.22.2
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Install gator
+        run: |
+          curl -sSfL -o gator.tar.gz \
+            "https://github.com/open-policy-agent/gatekeeper/releases/download/${GATOR_VERSION}/gator-${GATOR_VERSION}-linux-amd64.tar.gz"
+          tar -xzf gator.tar.gz gator
+          sudo mv gator /usr/local/bin/gator
+          gator --version
+      - name: Verify Gatekeeper policies against test cases
+        run: gator verify -v kubernetes/policies/gatekeeper/tests/
+
+  image:
+    name: Build, scan, SBOM and sign image
+    runs-on: ubuntu-latest
+    needs: [lint-test]
+    permissions:
+      contents: read
+      id-token: write # Cosign keyless signing and build provenance (OIDC)
+      attestations: write # actions/attest-build-provenance
+    env:
+      IMAGE_NAME: devsecops-app
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Trivy scan (Dockerfile misconfiguration)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: ./app
+          exit-code: '1'
+          severity: HIGH,CRITICAL
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # Single-arch local build, used for scanning and the SBOM on every run
+      - name: Build image (local)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ./app
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy scan (image vulnerabilities)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: table
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '0' # Report only; see SECURITY.md for the triage process
+
+      - name: Generate SBOM (Syft, CycloneDX)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          artifact-name: sbom.cdx.json
+
+      # ---- Publish path: main branch with AWS_DEPLOY_ENABLED=true only ----
       - name: Configure AWS credentials
-        if: github.ref == 'refs/heads/main'
-        uses: aws-actions/configure-aws-credentials@v4
+        if: env.PUBLISH == 'true'
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
       - name: Login to Amazon ECR
-        if: github.ref == 'refs/heads/main'
+        if: env.PUBLISH == 'true'
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
-      - name: Build and push Docker image (multi-arch)
-        if: github.ref == 'refs/heads/main'
-        id: build-and-push
-        uses: docker/build-push-action@v5
+      - name: Set up QEMU (multi-arch)
+        if: env.PUBLISH == 'true'
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+
+      - name: Build and push image (linux/amd64, linux/arm64)
+        if: env.PUBLISH == 'true'
+        id: push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ./app
           push: true
-          tags: ${{ steps.login-ecr.outputs.registry }}/devsecops-app:latest,${{ steps.login-ecr.outputs.registry }}/devsecops-app:${{ github.sha }}
           platforms: linux/amd64,linux/arm64
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
 
-      # Cosign keyless signing (GitHub OIDC)
       - name: Install Cosign
-        if: github.ref == 'refs/heads/main'
-        run: |
-          curl -sSL -o cosign https://github.com/sigstore/cosign/releases/download/v2.2.0/cosign-linux-amd64
-          chmod +x cosign
-          sudo mv cosign /usr/local/bin/
-      - name: Sign container image with Cosign (keyless)
-        if: github.ref == 'refs/heads/main'
+        if: env.PUBLISH == 'true'
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+
+      - name: Sign image and attach SBOM attestation (keyless)
+        if: env.PUBLISH == 'true'
         env:
-          COSIGN_EXPERIMENTAL: 1
+          IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
         run: |
-          cosign sign --yes ${{ steps.login-ecr.outputs.registry }}/devsecops-app@${{ steps.build-and-push.outputs.digest }}
+          cosign sign --yes "$IMAGE"
+          cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "$IMAGE"
 
-      # SLSA provenance generation and attestation
-      - name: Generate SLSA provenance
-        if: github.ref == 'refs/heads/main'
-        uses: actions/attest-build-provenance@v1
+      - name: Generate build provenance attestation
+        if: env.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
         with:
-          subject-name: ${{ steps.login-ecr.outputs.registry }}/devsecops-app
-          subject-digest: ${{ steps.build-and-push.outputs.digest }}
+          subject-name: ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-
-      - name: Build Docker image (PR/other branches)
-        if: github.ref != 'refs/heads/main'
-        uses: docker/build-push-action@v5
-        with:
-          context: ./app
-          push: false
-          load: true
-          tags: devsecops-app:latest
-          cache-from: type=local,src=/tmp/.buildx-cache
-
-      # Trivy scans
-      - name: Trivy scan (Dockerfile)
-        uses: aquasecurity/trivy-action@v0.16.0
-        with:
-          scan-type: 'dockerfile'
-          scan-ref: './app/Dockerfile'
-
-      - name: Trivy scan (image)
-        uses: aquasecurity/trivy-action@v0.16.0
-        with:
-          image-ref: ${{ steps.login-ecr.outputs.registry }}/devsecops-app:latest
-          format: 'table'
-          exit-code: '0'
-          ignore-unfixed: true
-        if: github.ref == 'refs/heads/main'
-      - name: Trivy scan (image, PR/other branches)
-        uses: aquasecurity/trivy-action@v0.16.0
-        with:
-          image-ref: 'devsecops-app:latest'
-          format: 'table'
-          exit-code: '0'
-          ignore-unfixed: true
-        if: github.ref != 'refs/heads/main'
-
-      # Semgrep SAST scan
-      - name: Install Semgrep
-        run: pip install semgrep
-      - name: Run Semgrep SAST
-        run: semgrep --config=auto --error --sarif --output=semgrep.sarif app/
-      - name: Upload Semgrep SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: semgrep.sarif
-
-      # Checkov IaC scan
-      - name: Install Checkov
-        run: pip install checkov
-      - name: Run Checkov on Terraform
-        run: checkov -d terraform/ --soft-fail --quiet --framework terraform
-      - name: Run Checkov on Kubernetes
-        run: checkov -d kubernetes/ --soft-fail --quiet --framework kubernetes

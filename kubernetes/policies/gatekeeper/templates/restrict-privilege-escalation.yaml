@@ -16,13 +16,6 @@ spec:
         }] {
           input.review.kind.kind == "Pod"
           c := input.review.object.spec.containers[_]
-          not c.securityContext.allowPrivilegeEscalation
+          not c.securityContext.allowPrivilegeEscalation == false
           msg := sprintf("Container %v must not allow privilege escalation", [c.name])
         }
----
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sPSPPrivilegeEscalation
-metadata:
-  name: restrict-privilege-escalation
-spec:
-  enforcementAction: dryrun

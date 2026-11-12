@@ -1,0 +1,8 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSignatures
+metadata:
+  name: require-signed-images
+spec:
+  enforcementAction: dryrun
+  parameters:
+    images: []

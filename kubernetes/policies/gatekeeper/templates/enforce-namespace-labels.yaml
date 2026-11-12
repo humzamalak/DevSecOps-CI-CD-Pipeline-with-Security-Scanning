@@ -23,16 +23,7 @@ spec:
         }] {
           input.review.kind.kind == "Namespace"
           required := {l | l := input.parameters.labels[_]}
-          missing := required - {l | l := input.review.object.metadata.labels[_]}
+          missing := required - {l | input.review.object.metadata.labels[l]}
           count(missing) > 0
           msg := sprintf("Namespace missing required labels: %v", [missing])
         }
----
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sRequiredLabels
-metadata:
-  name: enforce-namespace-labels
-spec:
-  enforcementAction: dryrun
-  parameters:
-    labels: ["environment", "owner"]

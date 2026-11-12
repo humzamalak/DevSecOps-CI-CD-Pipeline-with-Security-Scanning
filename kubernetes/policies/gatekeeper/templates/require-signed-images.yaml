@@ -33,12 +33,3 @@ spec:
         is_signed(img) = false {
           not endswith(img, "@sha256:signed")
         }
----
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sRequiredSignatures
-metadata:
-  name: require-signed-images
-spec:
-  enforcementAction: dryrun
-  parameters:
-    images: []

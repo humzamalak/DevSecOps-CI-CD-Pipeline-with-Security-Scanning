@@ -1,0 +1,6 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPSPHostPathHostNetwork
+metadata:
+  name: restrict-hostpath-hostnetwork
+spec:
+  enforcementAction: dryrun

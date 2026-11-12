@@ -2,8 +2,21 @@
 
 This directory contains OPA Gatekeeper constraint templates and constraints for EKS.
 
+- `templates/`: ConstraintTemplates (Rego). Apply these first.
+- `constraints/`: one constraint per template. Apply after Gatekeeper has created the CRDs.
+- `tests/`: `gator verify` test suite, run in CI by the `policy` job.
+
+Run the tests locally:
+
+```bash
+gator verify kubernetes/policies/gatekeeper/tests/
+```
+
+The policies check Pods (and Namespaces for labels). Gatekeeper evaluates the
+Pods that Deployments create, so the Deployment itself is not checked directly.
+
 ## Baseline Policies (Audit Mode)
-- Require signed images
+- Require signed images (placeholder: matches a fixed digest suffix and does not verify Cosign signatures)
 - Restrict privilege escalation
 - Enforce namespace labels
 - Restrict HostPath/HostNetwork
@@ -11,7 +24,7 @@ This directory contains OPA Gatekeeper constraint templates and constraints for 
 - Block default ServiceAccount usage
 
 ## Usage
-- All policies are applied in audit mode first. Review violations in Prometheus/Grafana before enforcing.
+- All constraints use `enforcementAction: dryrun` (audit only). Review violations in Prometheus/Grafana before enforcing.
 - See below for install and monitoring instructions.
 
 ## Install/Upgrade Gatekeeper (Helm)

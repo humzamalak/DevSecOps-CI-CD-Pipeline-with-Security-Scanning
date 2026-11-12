@@ -1,0 +1,8 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: enforce-namespace-labels
+spec:
+  enforcementAction: dryrun
+  parameters:
+    labels: ["environment", "owner"]

@@ -1,0 +1,67 @@
+# Gatekeeper policy unit tests. Run with: gator verify kubernetes/policies/gatekeeper/tests/
+# require-signed-images is a placeholder (see the policies README) and is not tested here.
+kind: Suite
+apiVersion: test.gatekeeper.sh/v1alpha1
+metadata:
+  name: gatekeeper-baseline
+tests:
+  - name: block-default-serviceaccount
+    template: ../templates/block-default-serviceaccount.yaml
+    constraint: ../constraints/block-default-serviceaccount.yaml
+    cases:
+      - name: app-pod-allowed
+        object: samples/pod-app.yaml
+        assertions:
+          - violations: no
+      - name: default-serviceaccount-denied
+        object: samples/pod-insecure.yaml
+        assertions:
+          - violations: yes
+  - name: enforce-resource-limits
+    template: ../templates/enforce-resource-limits.yaml
+    constraint: ../constraints/enforce-resource-limits.yaml
+    cases:
+      - name: app-pod-allowed
+        object: samples/pod-app.yaml
+        assertions:
+          - violations: no
+      - name: missing-cpu-denied
+        object: samples/pod-insecure.yaml
+        assertions:
+          - violations: 2
+  - name: restrict-privilege-escalation
+    template: ../templates/restrict-privilege-escalation.yaml
+    constraint: ../constraints/restrict-privilege-escalation.yaml
+    cases:
+      - name: app-pod-allowed
+        object: samples/pod-app.yaml
+        assertions:
+          - violations: no
+      - name: privilege-escalation-denied
+        object: samples/pod-insecure.yaml
+        assertions:
+          - violations: yes
+  - name: restrict-hostpath-hostnetwork
+    template: ../templates/restrict-hostpath-hostnetwork.yaml
+    constraint: ../constraints/restrict-hostpath-hostnetwork.yaml
+    cases:
+      - name: app-pod-allowed
+        object: samples/pod-app.yaml
+        assertions:
+          - violations: no
+      - name: hostpath-and-hostnetwork-denied
+        object: samples/pod-insecure.yaml
+        assertions:
+          - violations: yes
+  - name: enforce-namespace-labels
+    template: ../templates/enforce-namespace-labels.yaml
+    constraint: ../constraints/enforce-namespace-labels.yaml
+    cases:
+      - name: labelled-namespace-allowed
+        object: samples/namespace-labelled.yaml
+        assertions:
+          - violations: no
+      - name: unlabelled-namespace-denied
+        object: samples/namespace-unlabelled.yaml
+        assertions:
+          - violations: yes

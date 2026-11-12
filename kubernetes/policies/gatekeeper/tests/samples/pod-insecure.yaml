@@ -1,0 +1,20 @@
+# Pod that each Pod policy must reject
+apiVersion: v1
+kind: Pod
+metadata:
+  name: insecure
+spec:
+  serviceAccountName: default
+  hostNetwork: true
+  containers:
+    - name: insecure
+      image: busybox:latest
+      securityContext:
+        allowPrivilegeEscalation: true
+      volumeMounts:
+        - name: host
+          mountPath: /host
+  volumes:
+    - name: host
+      hostPath:
+        path: /

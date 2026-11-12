@@ -4,19 +4,21 @@ This repository enforces security and code quality at every stage of the CI/CD p
 
 ## Automated Security Scanning
 
-- **Semgrep (SAST):**  
-  Scans all Python application code for security vulnerabilities and code quality issues.  
-  - Fails the build on high/critical findings.
-  - Results are uploaded to the GitHub Security tab (see "Code scanning alerts").
+Defined in `.github/workflows/build.yml` (every push and pull request to `main`)
+and `.github/workflows/security.yml` (daily).
 
-- **Checkov (IaC):**  
-  Scans all Terraform and Kubernetes manifests for misconfigurations and policy violations.  
-  - Fails the build on critical findings.
-  - Output is visible in the Actions workflow logs.
-
-- **Trivy (Container):**  
-  Scans Dockerfiles and built images for vulnerabilities and license issues.  
-  - Fails the build on critical vulnerabilities.
+- **Semgrep (SAST):** scans `app/` with the `auto` rule set. Any finding fails
+  the build. Results are uploaded to the Security tab ("Code scanning alerts").
+- **Gitleaks (secrets):** scans the full Git history. Any finding fails the build.
+- **Checkov (IaC):** scans `terraform/` and `kubernetes/`. Runs in soft-fail
+  mode: findings show in the job log but do not fail the build.
+- **Trivy (container):** the Dockerfile configuration scan fails the build on
+  HIGH or CRITICAL findings. The image vulnerability scan reports HIGH and
+  CRITICAL issues with a fix available, but does not fail the build.
+- **OPA Gatekeeper (policy):** `gator verify` runs unit tests for the
+  Gatekeeper policies in `kubernetes/policies/gatekeeper/`. A failed test fails
+  the build.
+- **SBOM:** Syft writes a CycloneDX SBOM of the image as a build artefact.
 
 ## Code Quality Gates
 
