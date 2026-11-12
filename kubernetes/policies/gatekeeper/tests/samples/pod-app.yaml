@@ -1,0 +1,39 @@
+# Pod spec copied from kubernetes/deployment.yaml. Gator checks objects one by
+# one and does not expand Deployments, so the app Pod is tested directly.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: devsecops-app
+  namespace: devsecops
+  labels:
+    app: devsecops-app
+spec:
+  serviceAccountName: devsecops-app
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: devsecops-app
+      image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/devsecops-app:0123456789abcdef
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir: {}

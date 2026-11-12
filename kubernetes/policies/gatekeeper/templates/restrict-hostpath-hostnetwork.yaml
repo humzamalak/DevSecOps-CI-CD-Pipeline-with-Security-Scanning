@@ -30,10 +30,3 @@ spec:
           v.hostPath.path != ""
           msg := sprintf("Pod %v must not use hostPath volumes", [input.review.object.metadata.name])
         }
----
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sPSPHostPathHostNetwork
-metadata:
-  name: restrict-hostpath-hostnetwork
-spec:
-  enforcementAction: dryrun

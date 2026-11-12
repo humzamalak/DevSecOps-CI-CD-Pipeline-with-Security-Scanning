@@ -1,40 +1,42 @@
 name: Scheduled Security Scans
 
+# Daily re-scan of main, so new CVEs and Semgrep rules are caught even when
+# no code changes. Can also be started by hand from the Actions tab.
 on:
   schedule:
-    - cron: '0 3 * * *' # Daily at 3am UTC
+    - cron: '0 3 * * *' # Daily at 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   sast-semgrep:
+    name: SAST (Semgrep)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.11'
-
       - name: Install Semgrep
-        run: pip install semgrep
-
-      - name: Run Semgrep SAST
-        run: semgrep --config=auto app/
+        run: pip install semgrep==1.185.0
+      - name: Run Semgrep (fails on any finding)
+        run: semgrep scan --config=auto --error app/
 
   container-trivy:
+    name: Container scan (Trivy)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: docker build -t devsecops-app ./app
-
-      - name: Trivy scan (image)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Build image
+        run: docker build -t devsecops-app:scan ./app
+      - name: Trivy scan (image vulnerabilities)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: 'devsecops-app:latest'
-          format: 'table'
-          exit-code: '0'
+          scan-type: image
+          image-ref: devsecops-app:scan
+          format: table
           ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '0' # Report only

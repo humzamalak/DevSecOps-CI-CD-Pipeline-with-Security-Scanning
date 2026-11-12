@@ -1,0 +1,9 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredResources
+metadata:
+  name: enforce-resource-limits
+spec:
+  enforcementAction: dryrun
+  parameters:
+    limits: ["cpu"]
+    requests: ["cpu"]

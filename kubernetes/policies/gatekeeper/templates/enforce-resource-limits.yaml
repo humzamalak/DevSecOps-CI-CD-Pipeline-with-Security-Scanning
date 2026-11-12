@@ -38,13 +38,3 @@ spec:
           not c.resources.requests.cpu
           msg := sprintf("Container %v must set cpu requests", [c.name])
         }
----
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sRequiredResources
-metadata:
-  name: enforce-resource-limits
-spec:
-  enforcementAction: dryrun
-  parameters:
-    limits: ["cpu"]
-    requests: ["cpu"]

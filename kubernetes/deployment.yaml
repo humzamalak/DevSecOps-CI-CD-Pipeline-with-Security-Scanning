@@ -2,8 +2,12 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: devsecops-app
+  namespace: devsecops
   labels:
     app: devsecops-app
+  annotations:
+    # The deploy workflow sets the commit-SHA tag; the digest is not known when the manifest is written
+    checkov.io/skip1: CKV_K8S_43=Image is referenced by commit-SHA tag set at deploy time
 spec:
   replicas: 2
   selector:
@@ -14,15 +18,40 @@ spec:
       labels:
         app: devsecops-app
     spec:
+      serviceAccountName: devsecops-app
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: devsecops-app
-          image: <ECR_REGISTRY>/devsecops-app:latest # Replace with your ECR registry
+          # The deploy workflow replaces both placeholders with the ECR registry and the commit SHA
+          image: <ECR_REGISTRY>/devsecops-app:<IMAGE_TAG>
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           securityContext:
             runAsNonRoot: true
+            runAsUser: 10001
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 20
           resources:
             requests:
               cpu: "100m"
@@ -41,5 +70,3 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-      imagePullSecrets:
-        - name: regcred # If using private ECR
