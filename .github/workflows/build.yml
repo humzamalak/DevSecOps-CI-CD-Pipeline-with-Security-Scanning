@@ -92,7 +92,8 @@ jobs:
       - name: Checkov on Terraform
         run: checkov -d terraform/ --soft-fail --compact --framework terraform
       - name: Checkov on Kubernetes manifests
-        run: checkov -d kubernetes/ --soft-fail --compact --framework kubernetes
+        # The gator test samples are deliberately insecure, so they are skipped
+        run: checkov -d kubernetes/ --soft-fail --compact --framework kubernetes --skip-path kubernetes/policies/gatekeeper/tests
 
   policy:
     name: Policy tests (OPA Gatekeeper)

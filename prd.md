@@ -23,7 +23,7 @@ To deliver a production-ready, secure CI/CD pipeline that automatically enforces
 - **Compliance Ready**: Establish audit trails and security reporting for regulatory requirements
 - **Risk Mitigation**: Prevent vulnerable code and infrastructure from reaching production
 
-### Success Metrics
+### Target Metrics (goals, not measured results)
 - 95% reduction in security vulnerabilities reaching production
 - 50% faster deployment cycles with automated security gates
 - 100% audit trail coverage for all deployments
