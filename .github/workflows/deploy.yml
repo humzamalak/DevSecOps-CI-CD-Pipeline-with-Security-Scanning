@@ -66,7 +66,18 @@ jobs:
 
       - name: Health check
         run: |
-          sleep 10
           kubectl get pods -l app=devsecops-app
-          # Replace with your ingress/service endpoint as needed
-          curl --fail --max-time 10 http://devsecops-app.local/health || echo "Health check failed! Manual rollback may be required." 
+          # Reach the Service through a port-forward: the runner cannot resolve the ingress host.
+          kubectl port-forward service/devsecops-app 8080:80 &
+          PF_PID=$!
+          trap 'kill $PF_PID' EXIT
+          # Retry for up to 60s. The step fails if /health never returns 2xx.
+          for i in $(seq 1 12); do
+            if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/health; then
+              echo "Health check passed."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Health check failed. Run 'kubectl rollout undo deployment/devsecops-app' to roll back."
+          exit 1
