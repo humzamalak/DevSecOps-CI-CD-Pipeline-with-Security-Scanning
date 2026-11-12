@@ -44,3 +44,18 @@ module "eks" {
     }
   }
 }
+
+# Container registry that CI pushes the app image to (see .github/workflows/build.yml).
+# Tags stay MUTABLE because CI re-pushes the "latest" tag on every build.
+resource "aws_ecr_repository" "app" {
+  name                 = "devsecops-app"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+}
