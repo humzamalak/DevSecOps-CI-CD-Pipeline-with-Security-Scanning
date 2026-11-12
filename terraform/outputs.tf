@@ -12,3 +12,8 @@ output "vpc_id" {
   description = "VPC ID"
   value       = module.vpc.vpc_id
 }
+
+output "ecr_repository_url" {
+  description = "ECR repository URL that CI pushes the devsecops-app image to"
+  value       = aws_ecr_repository.app.repository_url
+}

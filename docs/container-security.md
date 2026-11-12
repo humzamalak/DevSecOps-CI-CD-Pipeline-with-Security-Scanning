@@ -17,8 +17,9 @@ and what it does not do yet. The steps are in `.github/workflows/build.yml`.
 These steps run only when the repository variable `AWS_DEPLOY_ENABLED` is
 `true` (see the README).
 
-1. Push a `linux/amd64` and `linux/arm64` image to Amazon ECR, tagged `latest`
-   and with the commit SHA.
+1. Push a `linux/amd64` and `linux/arm64` image to Amazon ECR, tagged with the
+   commit SHA. The ECR repository has immutable tags, so a tag cannot be
+   overwritten.
 2. Sign the image digest with Cosign keyless signing. The GitHub OIDC token
    proves the workflow identity, Fulcio issues a short-lived certificate, and
    the signature is recorded in the Rekor transparency log.

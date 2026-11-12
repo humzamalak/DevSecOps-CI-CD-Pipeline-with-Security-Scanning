@@ -6,6 +6,11 @@ A GitHub Actions pipeline that builds, tests and security-checks a small Python
 (FastAPI) service, then signs the container image and deploys it to Amazon EKS.
 Most security checks run as separate jobs, so a failure points to one control.
 
+**How to use it:** fork the repository and open a pull request. The checks run
+with no AWS account needed. To also push, sign and deploy the image, create the
+AWS resources with Terraform and set one repository variable. See
+[How to run it](#how-to-run-it).
+
 ## What the pipeline does
 
 On every push and pull request to `main`, `.github/workflows/build.yml` runs these jobs:
@@ -80,7 +85,7 @@ Limits that apply today:
 | `.github/workflows/` | Build, deploy and scheduled security workflows |
 | `kubernetes/` | Deployment, Service, Ingress, External Secrets, monitoring values |
 | `kubernetes/policies/gatekeeper/` | Gatekeeper templates, constraints and `gator` tests |
-| `terraform/` | VPC and EKS cluster (terraform-aws-modules) |
+| `terraform/` | VPC, EKS cluster (terraform-aws-modules) and ECR repository |
 | `docs/` | Container security, secrets management and naming conventions |
 
 ## How to run it
@@ -119,14 +124,18 @@ skipped.
 
 ### In GitHub Actions with AWS
 
-1. Create the VPC and EKS cluster with Terraform (`terraform/`). The deploy
-   workflow expects a cluster named `devsecops-eks` in `us-east-1`.
-2. Create an ECR repository named `devsecops-app`.
-3. Install OPA Gatekeeper in the cluster (see `kubernetes/policies/gatekeeper/README.md`).
-4. Add the repository secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
-5. Add the repository variable `AWS_DEPLOY_ENABLED` with the value `true`.
+1. Run `terraform init` and `terraform apply` in `terraform/`. This creates
+   the VPC, the EKS cluster and the `devsecops-app` ECR repository (immutable
+   tags, KMS encryption, scan on push). The deploy workflow expects the cluster
+   name `devsecops-eks` in `us-east-1`.
+2. Install OPA Gatekeeper in the cluster (see `kubernetes/policies/gatekeeper/README.md`).
+3. Add the repository secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
+4. Add the repository variable `AWS_DEPLOY_ENABLED` with the value `true`.
 
-The next push to `main` then pushes, signs and deploys the image.
+The next push to `main` then pushes, signs and deploys the image. The deploy
+workflow applies the namespace, ServiceAccount, NetworkPolicy and Gatekeeper
+policies, rolls out the Deployment, and fails if `/health` does not answer
+within 60 seconds.
 
 ## Further reading
 

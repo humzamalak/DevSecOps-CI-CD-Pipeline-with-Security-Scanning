@@ -191,9 +191,8 @@ jobs:
           context: ./app
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:latest
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          # One immutable tag per commit; the deploy workflow uses this tag
+          tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           cache-from: type=gha
 
       - name: Install Cosign
